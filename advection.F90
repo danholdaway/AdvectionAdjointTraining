@@ -5,7 +5,7 @@ implicit none
 integer :: nx, nt
 real, allocatable, dimension(:) :: x, f, u
 real, allocatable, dimension(:) :: fp, up
-real :: dx, dt, cour, s
+real :: dx, dt, cour, s, tltest, tol
 
 real, parameter :: pi = 3.14159265358979323846
 
@@ -22,9 +22,11 @@ real, allocatable, dimension(:) :: fp22, up22
 real :: ttest = 1.0e-2
 
 !Number of grid points
+!---------------------
 nx = 100
 
-!Allocate arrays
+!Allocate memory
+!---------------
 allocate(x(nx))
 allocate(f(nx))
 allocate(fp(nx))
@@ -45,35 +47,44 @@ allocate(up21(nx))
 allocate(fp22(nx))
 allocate(up22(nx))
 
+
 !Grid
+!----
 s = 100.0
 x = (/((j*2*pi/(nx-1)),j=0,nx-1)/)
 dx = x(2) - x(1)
 dt = dx/s
 nt = int(nx*s)
 
+
 !Initial condition
+!-----------------
 f = sin(x)
-u = -1.0      !=-1 to give analytical solution
+u = -1.0
+
+f0 = f   !Save a copy
+u0 = u
+
 
 !Stability check
+!---------------
 cour = maxval(u*dt/dx)
 if (cour > 1.0) then
   print*, 'Unstable time step, exiting.'
   return
 endif
 
-!Write initial condition
-call writef(nx,f,'q_init.txt')
-
-f0 = f
-u0 = u
 
 !Call nonlinear advection scheme
+!-------------------------------
 call advection1d(nx,nt,dx,dt,x,f,u)
 
-!Write forecast
-call writef(nx,f,'q_final.txt')
+
+!Write forecast initial and final state
+!--------------------------------------
+call writef(nx,f0,'q_init.txt')
+call writef(nx,f ,'q_final.txt')
+
 
 !Tangent test
 !------------
@@ -81,6 +92,7 @@ print*, ' '
 print*, 'Tangent linear test'
 print*, '-------------------'
 
+tltest = 10.0
 do j = 1,10
 
   f1 = f
@@ -102,16 +114,30 @@ do j = 1,10
   
   call advection1d_tl(nx,nt,dx,dt,x,f,fp,u,up)
   
+  tltest = min(tltest,maxval((f2-f1)/fp))
+
   print*, 'Pert scaled by, tangent test result:', ttest, ', ', maxval((f2-f1)/fp)
   
   ttest = ttest/10
 
 enddo
+
+!Tolerance for passing/failing tangent linear test
+tol = 1.0e-4
+
 print*, ' '
+print*, 'Best: ', tltest, tol
+print*, ' '
+if (abs(tltest-1) < tol) then
+  print*, 'TL Test Passed with tolerance', tol
+else
+  print*, 'TL Test Failed with tolerance', tol
+endif
+print*, ' '
+
 
 !Dot product test
 !----------------
-
 
 call random_number(fp11)
 call random_number(up11)
@@ -123,12 +149,12 @@ up12 = up11
 fp21 = fp22
 up21 = up22
 
-f0 = f
+f = f0
+u = u0
 call advection1d_tl(nx,nt,dx,dt,x,f,fp12,u,up12)
 
-up12 = 0.0
-
 f = f0
+u = u0
 call advection1d_ad(nx,nt,dx,dt,x,f,fp21,u,up21)
 
 dp = 0.0
@@ -144,6 +170,28 @@ print*, '----------------'
 print*, '<x,xhat>, <y,yhat>, relative difference:', dp(1), dp(2), (dp(2) - dp(1))/dp(1)
 print*, ' '
 
+
+!Run adjoint with a 1 somewhere
+!------------------------------
+
+f = f0
+u = u0
+
+fp = 0.0
+up = 0.0
+
+fp(50) = 1.0
+
+call writef(nx,fp,'q_init_ad.txt')
+
+call advection1d_ad(nx,nt,dx,dt,x,f,fp,u,up)
+
+call writef(nx,fp ,'q_final_ad.txt')
+call writef(nx,up ,'u_final_ad.txt')
+
+
+!Deallocate memory
+!-----------------
 deallocate(x)
 deallocate(f)
 deallocate(fp)
@@ -164,9 +212,11 @@ deallocate(up21)
 deallocate(fp22)
 deallocate(up22)
 
+
 !------------------------------------
 contains
 !------------------------------------
+
 
 subroutine advection1d(nx,nt,dx,dt,x,f,u)
 
@@ -215,10 +265,12 @@ real :: fold(nx), foldd(nx)
     fold = f
     DO j=1,nx
       IF (j .EQ. 1) THEN
-        fd(j) = foldd(j) + dt*ud(j)*(fold(j)-fold(nx))/dx + dt*u(j)*(foldd(j)-foldd(nx))/dx
+        fd(j) = foldd(j) + dt*ud(j)*(fold(j)-fold(nx))/dx + dt*u(j)*(&
+&         foldd(j)-foldd(nx))/dx
         f(j) = fold(j) + dt*u(j)/dx*(fold(j)-fold(nx))
       ELSE
-        fd(j) = foldd(j) + dt*ud(j)*(fold(j)-fold(j-1))/dx + dt*u(j)*(foldd(j)-foldd(j-1))/dx
+        fd(j) = foldd(j) + dt*ud(j)*(fold(j)-fold(j-1))/dx + dt*u(j)*(&
+&         foldd(j)-foldd(j-1))/dx
         f(j) = fold(j) + dt*u(j)/dx*(fold(j)-fold(j-1))
       END IF
     END DO
@@ -241,7 +293,7 @@ real :: fold(nx), foldb(nx)
 real :: tempb, tempb0
 
   DO n=1,nt
-    CALL PUSHREAL4ARRAY(fold, nx)
+    CALL PUSHREAL8ARRAY(fold, nx)
     fold = f
     DO j=1,nx
       IF (j .EQ. 1) THEN
@@ -253,7 +305,6 @@ real :: tempb, tempb0
       END IF
     END DO
   END DO
-  ub = 0.0
   DO n=nt,1,-1
     foldb = 0.0
     DO j=nx,1,-1
@@ -272,7 +323,7 @@ real :: tempb, tempb0
         fb(j) = 0.0
       END IF
     END DO
-    CALL POPREAL4ARRAY(fold, nx)
+    CALL POPREAL8ARRAY(fold, nx)
     fb = fb + foldb
   END DO
 
