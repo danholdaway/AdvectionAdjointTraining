@@ -30,14 +30,12 @@ allocate(f(nx))
 allocate(fp(nx))
 allocate(u(nx))
 allocate(up(nx))
-
 allocate(f0(nx))
 allocate(f1(nx))
 allocate(f2(nx))
 allocate(u0(nx))
 allocate(u1(nx))
 allocate(u2(nx))
-
 allocate(fp11(nx))
 allocate(up11(nx))
 allocate(fp12(nx))
@@ -66,7 +64,7 @@ if (cour > 1.0) then
 endif
 
 !Write initial condition
-call writef(nx,f,'init.txt')
+call writef(nx,f,'q_init.txt')
 
 f0 = f
 u0 = u
@@ -75,7 +73,7 @@ u0 = u
 call advection1d(nx,nt,dx,dt,x,f,u)
 
 !Write forecast
-call writef(nx,f,'nl_out.txt')
+call writef(nx,f,'q_final.txt')
 
 !Tangent test
 !------------
@@ -146,13 +144,25 @@ print*, '----------------'
 print*, '<x,xhat>, <y,yhat>, relative difference:', dp(1), dp(2), (dp(2) - dp(1))/dp(1)
 print*, ' '
 
+deallocate(x)
+deallocate(f)
+deallocate(fp)
+deallocate(u)
+deallocate(up)
 deallocate(f0)
-deallocate(fp11,up11)
-deallocate(fp12,up12)
-deallocate(fp21,up21)
-deallocate(fp22,up22)
-
-deallocate(x,f,fp,u,up)
+deallocate(f1)
+deallocate(f2)
+deallocate(u0)
+deallocate(u1)
+deallocate(u2)
+deallocate(fp11)
+deallocate(up11)
+deallocate(fp12)
+deallocate(up12)
+deallocate(fp21)
+deallocate(up21)
+deallocate(fp22)
+deallocate(up22)
 
 !------------------------------------
 contains
